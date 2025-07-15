@@ -108,8 +108,8 @@ def zero_shot_intent_check(message: str) -> dict:
 
 def is_job_requirement(message: str) -> bool:
     """
-    Check if message is a job requirement (someone looking to hire)
-    Returns True for job postings, False for freelancer offers
+    Check if message is a job requirement (someone looking to hire freelancers)
+    Returns True for freelance job postings, False for company jobs and freelancer offers
     """
     
     # Step 1: Quick keyword pre-filter
@@ -117,38 +117,61 @@ def is_job_requirement(message: str) -> bool:
         logger.info(f"No relevant keywords found: '{message[:40]}...'")
         return False
     
-    # Step 1.5: Strong keyword indicators for job requirements
+    # Step 1.5: Filter out company job postings (full-time positions)
     message_lower = message.lower()
-    job_indicators = [
-        'looking for', 'need', 'require', 'hiring', 'seeking', 'wanted',
-        'any ', 'available', 'dm me', 'contact me', 'reach out'
-    ]
-    freelancer_indicators = [
-        'i am', 'i\'m', 'offering', 'available for', 'portfolio', 
-        'my services', 'hire me', 'contact us', 'we are', 'we provide'
+    
+    # Company job indicators (should be filtered out)
+    company_job_indicators = [
+        'we\'re hiring', 'we are hiring', 'hiring:', 'join our team', 'full time',
+        'salary:', 'experience:', 'location:', 'cv to', 'resume to', 'apply to',
+        'company', 'intern', 'internship', 'office', 'onsite', 'employee',
+        'benefits', 'package', 'permanent', 'years must', 'background and',
+        'only for freshers', 'freshers!', 'candidates with'
     ]
     
-    job_score = sum(1 for indicator in job_indicators if indicator in message_lower)
-    freelancer_score = sum(1 for indicator in freelancer_indicators if indicator in message_lower)
-    
-    # If clear keyword pattern, return immediately
-    if job_score >= 2 and freelancer_score == 0:
-        logger.info(f"✅ STRONG JOB REQUIREMENT keywords detected: '{message[:40]}...'")
-        return True
-    elif freelancer_score >= 2 and job_score == 0:
-        logger.info(f"❌ STRONG FREELANCER OFFER keywords detected: '{message[:40]}...'")
+    # Check if it's a company job posting
+    company_score = sum(1 for indicator in company_job_indicators if indicator in message_lower)
+    if company_score >= 2:
+        logger.info(f"❌ COMPANY JOB POSTING detected: '{message[:40]}...'")
         return False
     
-    # Step 2: Zero-shot classification
+    # Freelance job indicators (what we want)
+    freelance_job_indicators = [
+        'looking for', 'need', 'require', 'seeking', 'wanted',
+        'any ', 'available', 'dm me', 'contact me', 'reach out',
+        'freelance', 'freelancer', 'project', 'gig'
+    ]
+    
+    # Freelancer offer indicators (should be filtered out)
+    freelancer_indicators = [
+        'i am', 'i\'m', 'offering', 'available for', 'portfolio', 
+        'my services', 'hire me', 'contact us', 'we are', 'we provide',
+        'get your', 'just ₹', 'starting from'
+    ]
+    
+    freelance_job_score = sum(1 for indicator in freelance_job_indicators if indicator in message_lower)
+    freelancer_score = sum(1 for indicator in freelancer_indicators if indicator in message_lower)
+    
+    # If clear freelancer offer pattern, filter out
+    if freelancer_score >= 2:
+        logger.info(f"❌ FREELANCER OFFER detected: '{message[:40]}...'")
+        return False
+    
+    # If clear freelance job requirement pattern, accept
+    if freelance_job_score >= 2 and freelancer_score == 0:
+        logger.info(f"✅ FREELANCE JOB REQUIREMENT detected: '{message[:40]}...'")
+        return True
+    
+    # Step 2: Zero-shot classification for borderline cases
     classification_result = zero_shot_intent_check(message)
     
     intent = classification_result.get("intent", "")
     confidence = classification_result.get("confidence", 0.0)
     
-    # Check if it's a job requirement with sufficient confidence
+    # Check if it's a client looking to hire with sufficient confidence
     is_job_req = (
         "Client looking to hire" in intent and 
-        confidence > 0.4  # Lower confidence threshold for better detection
+        confidence > 0.6  # Higher confidence threshold to reduce false positives
     )
     
     if is_job_req:
@@ -176,13 +199,19 @@ def test_classifier():
         "Hello, I'm looking for freelance videographers",
         "Need digital marketer who has experience in lead generation",
         "Any Figma designers freelancers kindly DM me",
+        "Hi\n\nAny freelance Shopify Website developer available?\n\nDM me, I will share the contact person",
         
         # Should be FALSE (Freelancer Offers)
         "I'm a passionate freelance developer actively looking for projects",
         "Hello Everyone! I'm offering freelance services in Digital Marketing",
         "Are you looking for performance-driven digital marketers?",
         "I'm Barath Chander E, a freelance developer looking for opportunities",
-        "Get Your Own Business Portfolio Website for Just ₹1999!"
+        "Get Your Own Business Portfolio Website for Just ₹1999!",
+        
+        # Should be FALSE (Company Jobs)
+        "We're Hiring: Machine Learning Intern\n\nWe're looking for a passionate Machine Learning intern to join our team!",
+        "🚀 We're Hiring – Digital Marketing Manager at Fitoverse 🌐\nLooking for a smart, hands-on marketer who can run Google Ads, Meta Ads, SEO, and Email Marketing campaigns. Salary: ₹25,000 – ₹30,000/month Experience: 1-2 years Must!",
+        "Dears,\nWe are hiring freshers!\nLooking for candidates with a CSC, ECE, or EEE background and good communication skills to handle client coordination and Avaya support.\nOnly for freshers.\nIf you're interested, please DM."
     ]
     
     print("🧪 Testing Zero-Shot Classifier:")
