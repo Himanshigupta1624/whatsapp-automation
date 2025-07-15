@@ -4,7 +4,6 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# Extended keywords for all freelance/development categories
 FREELANCE_KEYWORDS = [
     # Core development terms
     'web developer', 'website developer', 'frontend developer', 'backend developer',

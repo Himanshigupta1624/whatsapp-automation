@@ -12,11 +12,11 @@ logger = logging.getLogger(__name__)
 @api_view(["POST"])
 def whatsapp_webhook(request):
     try:
-        # Extract message based on Soft7 webhook structure
+        
         webhook_data = request.data
         event_type = webhook_data.get('data', {}).get('event', '')
         
-        # Only process message events (not updates)
+        
         if event_type == 'messages.upsert':
             messages = webhook_data.get('data', {}).get('data', {}).get('messages', [])
             
