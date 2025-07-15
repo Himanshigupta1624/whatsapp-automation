@@ -12,7 +12,7 @@ def send_to_telegram(text: str, sender_info: dict = None):
     """
     try:
         # Build the message with only name, contact, and message
-        message_parts = ["🚀 *New Web Development Opportunity!*\n"]
+        message_parts = ["🚀 *New Opportunity!*\n"]
         
         if sender_info:
             # Add sender name
