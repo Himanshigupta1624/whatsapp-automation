@@ -2,3 +2,7 @@ venv
 __pycache__/
 db.sqlite3
 
+# Logs
+*.log
+webhook_debug.log
+.env
