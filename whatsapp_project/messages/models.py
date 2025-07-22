@@ -6,3 +6,6 @@ class MessageLog(models.Model):
     is_relevant=models.BooleanField(default=False)
     forwarded_to_telegram=models.BooleanField(default=False)
     created_at=models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        db_table = 'whatsapp_messages_messagelog'
