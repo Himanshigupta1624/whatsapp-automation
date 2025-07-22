@@ -5,8 +5,8 @@ from decouple import config
 
 logger = logging.getLogger(__name__)
 
-BOT_TOKEN = config('TELEGRAM_BOT_TOKEN', default='7884745275:AAGTNI72u1ry0sYxmzPt2W3dwe_4ZTT2bJk')
-CHAT_ID = config('TELEGRAM_CHAT_ID', default='-4886371299')
+BOT_TOKEN = config('BOT_TOKEN', default='7884745275:AAGTNI72u1ry0sYxmzPt2W3dwe_4ZTT2bJk')
+CHAT_ID = config('CHAT_ID', default='-4886371299')
 
 def escape_markdown_v2(text: str) -> str:
     """Escape special characters for Telegram MarkdownV2"""
