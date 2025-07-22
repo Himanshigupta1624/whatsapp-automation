@@ -30,7 +30,7 @@ DEBUG = config("DEBUG", default=False, cast=bool)
 ALLOWED_HOSTS = ['*']
 
 CSRF_TRUSTED_ORIGINS = [
-    'https://whatsapp-automation.onrender.com',  # Your Render URL
+    'https://whatsapp-automation-ca2q.onrender.com',  # Your Render URL
     'http://localhost:8000',
     'http://127.0.0.1:8000',
 ]
