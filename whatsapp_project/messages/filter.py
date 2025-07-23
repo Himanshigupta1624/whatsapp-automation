@@ -310,9 +310,34 @@ def preprocess_message(message: str) -> str:
     return message.strip()
 
 def quick_keyword_check(message: str) -> bool:
-    """Quick check for freelance/development keywords"""
+    """Quick check for freelance/development keywords - more restrictive"""
     message_lower = message.lower()
-    return any(keyword in message_lower for keyword in FREELANCE_KEYWORDS)
+    
+    # Immediate disqualifiers - if these exist, it's not a freelance job
+    disqualifiers = [
+        'salary', 'in hand', 'hours duty', 'bus canteen', 'mnc company',
+        'urgent requirement', 'send resume', 'sir', 'education :', 'male & female',
+        'qualification :', 'immediate hiring', 'steel deal', 'get access'
+    ]
+    
+    if any(disq in message_lower for disq in disqualifiers):
+        return False
+    
+    # Must have a hiring intent keyword
+    hiring_keywords = [
+        'looking for', 'need', 'require', 'seeking', 'wanted', 'hire'
+    ]
+    
+    # Must have a freelance/development skill keyword
+    skill_keywords = [
+        'developer', 'designer', 'freelancer', 'video editor', 'marketer',
+        'appointment setter', 'content writer', 'programmer', 'coder'
+    ]
+    
+    has_hiring_intent = any(keyword in message_lower for keyword in hiring_keywords)
+    has_skill_requirement = any(keyword in message_lower for keyword in skill_keywords)
+    
+    return has_hiring_intent and has_skill_requirement
 
 def gemini_intent_check(message: str) -> dict:
     """Use Gemini API to determine message intent"""
@@ -383,6 +408,37 @@ def is_job_requirement(message: str) -> bool:
     Returns True for freelance job postings, False for company jobs and freelancer offers
     """
     
+    # Pre-filter: Aggressive company job detection
+    message_lower = message.lower()
+    
+    # Immediate rejection patterns - these are never freelance jobs
+    immediate_reject_patterns = [
+        # Salary range patterns
+        r'\d+\s*to\s*\d+.*(?:in hand|salary)',
+        r'salary.*₹.*\d+',
+        r'\d+.*in hand',
+        r'salary.*\d+.*to.*\d+',
+        # Company job structure patterns
+        r'education.*:.*\d+th',
+        r'qualification.*:.*diploma',
+        r'male.*&.*female',
+        r'bus.*canteen',
+        r'urgent.*requirement.*male',
+        r'mnc.*company',
+        r'send.*resume.*urgently',
+        r'contact.*\d{10}.*sir',
+        # Product/service promotions
+        r'get.*access.*to',
+        r'limited.*time.*deal',
+        r'unbeatable.*price',
+        r'don\'t miss out'
+    ]
+    
+    for pattern in immediate_reject_patterns:
+        if re.search(pattern, message_lower):
+            logger.info(f"❌ IMMEDIATE REJECT PATTERN detected: '{message[:40]}...'")
+            return False
+    
     # Step 1: Quick keyword pre-filter
     if not quick_keyword_check(message):
         logger.info(f"No relevant keywords found: '{message[:40]}...'")
@@ -397,12 +453,28 @@ def is_job_requirement(message: str) -> bool:
         'salary:', 'experience:', 'location:', 'cv to', 'resume to', 'apply to',
         'company', 'intern', 'internship', 'office', 'onsite', 'employee',
         'benefits', 'package', 'permanent', 'years must', 'background and',
-        'only for freshers', 'freshers!', 'candidates with'
+        'only for freshers', 'freshers!', 'candidates with', 'mnc company',
+        'urgent requirement', 'in hand', 'hours duty', 'bus canteen', 
+        'pf esic', 'send me resume', 'interview depend', 'male & female',
+        'education :', 'qualification :', 'salary ₹', 'contact :', 'sir',
+        'immediate hiring', 'requirements :', 'eligibility :', 'department',
+        'on roll job', 'production supervisor', 'maintenance department',
+        'store supervisor', 'data entry operator', 'quality department',
+        'mechanical diploma', 'female candidates only', 'minimum 1 year',
+        # Additional patterns from recent spam
+        'salary ', 'to ', 'age limit', 'xerox', 'aadhar card', 'pan card',
+        'marksheet', 'bank passbook', 'passport size photo', 'facilities',
+        'bus route', 'interview time', 'shoes compalsary', 'document',
+        'only/female', 'qualification', 'urgently required', 'post :',
+        'project :', 'experience -', 'payroll company', 'city -', 'area-',
+        'please help to forward', 'steel deal', 'limited time', 'flutterflow',
+        'unbeatable price', 'access to', 'don\'t miss out', 'valuenest',
+        't&c apply', 'get access to', 'no-code', 'drag & drop'
     ]
     
     # Check if it's a company job posting
     company_score = sum(1 for indicator in company_job_indicators if indicator in message_lower)
-    if company_score >= 2:
+    if company_score >= 1:  # Lower threshold - even 1 indicator is enough
         logger.info(f"❌ COMPANY JOB POSTING detected: '{message[:40]}...'")
         return False
     
@@ -417,14 +489,17 @@ def is_job_requirement(message: str) -> bool:
     freelancer_indicators = [
         'i am', 'i\'m', 'offering', 'available for', 'portfolio', 
         'my services', 'hire me', 'contact us', 'we are', 'we provide',
-        'get your', 'just ₹', 'starting from'
+        'get your', 'just ₹', 'starting from', 'dm me for', 'share your portfolio',
+        'just edited', 'loved working', 'send profiles', 'drop a', 'if you\'re',
+        'kindly share portfolio', 'with relevant projects', 'these kind of',
+        'views are awesome', 'working on it'
     ]
     
     freelance_job_score = sum(1 for indicator in freelance_job_indicators if indicator in message_lower)
     freelancer_score = sum(1 for indicator in freelancer_indicators if indicator in message_lower)
     
     # If clear freelancer offer pattern, filter out
-    if freelancer_score >= 2:
+    if freelancer_score >= 1:  # Lower threshold - even 1 indicator is enough
         logger.info(f"❌ FREELANCER OFFER detected: '{message[:40]}...'")
         return False
     
@@ -472,30 +547,40 @@ def test_classifier():
         "Hello, I'm looking for freelance videographers",
         "Need digital marketer who has experience in lead generation",
         "Any Figma designers freelancers kindly DM me",
-        "Hi\n\nAny freelance Shopify Website developer available?\n\nDM me, I will share the contact person",
+        "Hi looking for a video editor to edit AI videos",
+        "Hey guys, I am looking for experienced appointment setters for my agency",
+        
+        # Should be FALSE (Recent Company Job Postings)
+        "Urgent requirement • MNC COMPANY • Male & female Education 10th 12th ITI salary 15000 TO 17,000",
+        "•Urgently Requirement• •Tomorrow• company Name:-( MNC ) •Only/FEMALE• •Age limit•:- 18-30 years",
+        "Please Help To Forward In Job Groups Urgently Required Post : 7 PSR Project : - Biotique Company",
+        "FlutterFlow Now Available in Steel Deal! Get access to FlutterFlow – the powerful no-code app builder",
+        "Urgent requirement Male & female Education : 10th 12th ITI Salary : 17000 in hand 8 hours duty",
+        "MNC COMPANY Male & female Education : BA B COM BSC Salary : 15500 in hand",
+        "Urgent requirement ON ROLL JOB Production supervisor 04 Store supervisor 05",
+        "Immediate Hiring - Female Candidate With Mechanical Diploma Requirements",
         
         # Should be FALSE (Freelancer Offers)
+        "Just Edited this New Videos for my Client. DM me for Video Projects",
         "I'm a passionate freelance developer actively looking for projects",
-        "Hello Everyone! I'm offering freelance services in Digital Marketing",
-        "Are you looking for performance-driven digital marketers?",
-        "I'm Barath Chander E, a freelance developer looking for opportunities",
         "Get Your Own Business Portfolio Website for Just ₹1999!",
+        "Kindly share portfolio with relevant projects",
+        "Drop a 'Interested' if you're the right fit or DM me directly",
         
-        # Should be FALSE (Company Jobs)
-        "We're Hiring: Machine Learning Intern\n\nWe're looking for a passionate Machine Learning intern to join our team!",
-        "🚀 We're Hiring – Digital Marketing Manager at Fitoverse 🌐\nLooking for a smart, hands-on marketer who can run Google Ads, Meta Ads, SEO, and Email Marketing campaigns. Salary: ₹25,000 – ₹30,000/month Experience: 1-2 years Must!",
-        "Dears,\nWe are hiring freshers!\nLooking for candidates with a CSC, ECE, or EEE background and good communication skills to handle client coordination and Avaya support.\nOnly for freshers.\nIf you're interested, please DM."
+        # Should be FALSE (Model/Other Requirements)
+        "Hair Show Model Requirement – Schwarzkopf Professional Academy Location: Saket",
+        "We need 5 Female Models for a 2-Day Hair Show Send profiles ASAP!"
     ]
     
-    print("🧪 Testing Gemini API Classifier:")
-    print("=" * 50)
+    print("🧪 Testing Ultra-Restrictive Gemini API Classifier:")
+    print("=" * 60)
     
-    for message in test_messages:
+    for i, message in enumerate(test_messages, 1):
         result = is_job_requirement(message)
         status = "✅ PASS" if result else "❌ FILTER"
-        print(f"{status}: {message[:60]}...")
+        print(f"{i:2d}. {status}: {message[:50]}...")
     
-    print("=" * 50)
+    print("=" * 60)
 
 if __name__ == "__main__":
     test_classifier()
