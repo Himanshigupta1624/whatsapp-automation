@@ -227,10 +227,17 @@
 # if __name__ == "__main__":
 #     test_classifier()
 
-import google.generativeai as genai
 import re
 import logging
 import os
+
+# Try to import Google Generative AI, but handle gracefully if not available
+try:
+    import google.generativeai as genai
+    GEMINI_AVAILABLE = True
+except ImportError:
+    GEMINI_AVAILABLE = False
+    genai = None
 
 logger = logging.getLogger(__name__)
 
@@ -265,36 +272,42 @@ FREELANCE_KEYWORDS = [
     'freelancer', 'freelance', 'developer', 'designer', 'project'
 ]
 
-# Configure Gemini API
+# Configure Gemini API with graceful fallback
 def configure_gemini():
-    """Configure Gemini API with API key"""
+    """Configure Gemini API with API key - graceful fallback"""
     try:
+        import google.generativeai as genai_import
         api_key = os.getenv('GEMINI_API_KEY')
         if not api_key:
-            logger.warning("GEMINI_API_KEY not found in environment variables")
+            logger.warning("GEMINI_API_KEY not found - pattern-only mode")
             return False
         
-        genai.configure(api_key=api_key)
+        genai_import.configure(api_key=api_key)
         return True
+    except ImportError:
+        logger.warning("Google Generative AI not available - pattern-only mode")
+        return False
     except Exception as e:
         logger.error(f"Failed to configure Gemini API: {e}")
         return False
 
-# Initialize Gemini model
+# Initialize Gemini model with memory conservation
 _gemini_model = None
 
 def get_gemini_model():
-    """Get Gemini model instance"""
+    """Get Gemini model instance - memory conservative"""
     global _gemini_model
     if _gemini_model is None:
         try:
             if configure_gemini():
-                _gemini_model = genai.GenerativeModel('gemini-1.5-flash')
-                logger.info("Gemini model initialized successfully")
+                import google.generativeai as genai_import
+                _gemini_model = genai_import.GenerativeModel('gemini-1.5-flash')
+                logger.info("Gemini model available for complex cases")
             else:
                 _gemini_model = False
+                logger.info("Using pattern-only classification (memory efficient)")
         except Exception as e:
-            logger.error(f"Failed to initialize Gemini model: {e}")
+            logger.error(f"Gemini initialization failed: {e}")
             _gemini_model = False
     
     return _gemini_model
@@ -310,34 +323,41 @@ def preprocess_message(message: str) -> str:
     return message.strip()
 
 def quick_keyword_check(message: str) -> bool:
-    """Quick check for freelance/development keywords - less restrictive to let Gemini decide"""
+    """Quick check for freelance/development keywords - memory efficient"""
     message_lower = message.lower()
     
-    # Only the most obvious disqualifiers that are never freelance jobs
+    # Comprehensive disqualifiers that are never freelance jobs
     hard_disqualifiers = [
         'salary', 'in hand', 'hours duty', 'bus canteen', 'mnc company',
         'urgent requirement', 'send resume', 'sir', 'education :', 'male & female',
-        'qualification :', 'immediate hiring', 'steel deal'
+        'qualification :', 'immediate hiring', 'steel deal', 'get access',
+        # Service offering patterns (VedaTechX style)
+        'what we offer', 'we offer', 'our services', 'we provide', 'we deliver',
+        'fiverr', 'gig', 'dm me to get started', 'contact us for', 'visit our',
+        'check out our', 'hire us', 'we specialize', 'we are expert',
+        'explore the gig', 'madeonfiverr', 'our expertise', 'we help you',
+        'you\'re in the right place', 'we merge', 'transform your', 
+        'tailored to your', 'smart erp solutions', 'ancient wisdom',
+        'exceptional solutions', 'empowering your business'
     ]
     
     if any(disq in message_lower for disq in hard_disqualifiers):
         return False
     
-    # Must have a hiring intent keyword OR skill keyword (more permissive)
+    # Must have hiring intent AND skill requirement (more restrictive)
     hiring_keywords = [
         'looking for', 'need', 'require', 'seeking', 'wanted', 'hire'
     ]
     
     skill_keywords = [
         'developer', 'designer', 'freelancer', 'video editor', 'marketer',
-        'appointment setter', 'content writer', 'programmer', 'coder', 'odoo'
+        'appointment setter', 'content writer', 'programmer', 'coder'
     ]
     
     has_hiring_intent = any(keyword in message_lower for keyword in hiring_keywords)
     has_skill_requirement = any(keyword in message_lower for keyword in skill_keywords)
     
-    # Let more messages through to Gemini for proper analysis
-    return has_hiring_intent or has_skill_requirement
+    return has_hiring_intent and has_skill_requirement
 
 def gemini_intent_check(message: str) -> dict:
     """Use Gemini API to determine message intent"""
@@ -412,48 +432,26 @@ Explanation: [reason]
 
 def is_job_requirement(message: str) -> bool:
     """
-    Check if message is a job requirement (someone looking to hire freelancers)
-    Returns True for freelance job postings, False for company jobs and freelancer offers
+    Memory-efficient job requirement checker
+    Uses pattern matching first, Gemini only as fallback for edge cases
     """
     
-    # Pre-filter: Aggressive company job detection
+    # Pre-filter: Aggressive pattern detection (no AI needed)
     message_lower = message.lower()
     
-    # Special check for deceptive service offerings that use "looking for" but are actually ads
-    deceptive_service_patterns = [
-        'what we offer', 'we offer', 'fiverr', 'gig', 'dm me to get started', 
-        'our services', 'we deliver', 'we provide', 'we specialize', 'we merge',
-        'transform your', 'let us', 'we help you', 'at [company_name]',
-        'explore the gig', 'madeonfiverr', 'you\'re in the right place',
-        'tailored to your', 'smart erp solutions', 'ancient wisdom',
-        'exceptional odoo solutions'
-    ]
-    
-    if 'looking for' in message_lower and any(indicator in message_lower for indicator in deceptive_service_patterns):
-        logger.info(f"❌ DECEPTIVE SERVICE OFFERING detected: '{message[:40]}...'")
-        return False
-    
-    # Immediate rejection patterns - these are never freelance jobs
+    # Step 1: Immediate rejection patterns (regex-based, memory efficient)
     immediate_reject_patterns = [
-        # Salary range patterns
+        # Salary patterns
         r'\d+\s*to\s*\d+.*(?:in hand|salary)',
         r'salary.*₹.*\d+',
         r'\d+.*in hand',
-        r'salary.*\d+.*to.*\d+',
-        # Company job structure patterns
+        # Company job patterns
         r'education.*:.*\d+th',
-        r'qualification.*:.*diploma',
         r'male.*&.*female',
         r'bus.*canteen',
         r'urgent.*requirement.*male',
         r'mnc.*company',
         r'send.*resume.*urgently',
-        r'contact.*\d{10}.*sir',
-        # Product/service promotions
-        r'get.*access.*to',
-        r'limited.*time.*deal',
-        r'unbeatable.*price',
-        r'don\'t miss out',
         # Service offering patterns
         r'what.*we.*offer',
         r'fiverr\.com',
@@ -461,48 +459,95 @@ def is_job_requirement(message: str) -> bool:
         r'dm.*me.*to.*get.*started',
         r'you\'re.*in.*the.*right.*place',
         r'we.*merge.*ancient.*wisdom',
-        r'transform.*your.*operations'
+        r'transform.*your.*operations',
+        r'empowering.*your.*business'
     ]
     
     for pattern in immediate_reject_patterns:
         if re.search(pattern, message_lower):
-            logger.info(f"❌ IMMEDIATE REJECT PATTERN detected: '{message[:40]}...'")
+            logger.info(f"❌ REGEX PATTERN REJECT: '{message[:40]}...'")
             return False
     
-    # Step 1: Quick keyword pre-filter (but less restrictive now)
+    # Step 2: Deceptive service offerings check
+    deceptive_patterns = [
+        'what we offer', 'we offer', 'fiverr', 'gig', 'dm me to get started', 
+        'our services', 'we deliver', 'we provide', 'we specialize', 'we merge',
+        'transform your', 'you\'re in the right place', 'tailored to your',
+        'exceptional solutions', 'empowering your business'
+    ]
+    
+    if 'looking for' in message_lower and any(pattern in message_lower for pattern in deceptive_patterns):
+        logger.info(f"❌ DECEPTIVE SERVICE OFFERING: '{message[:40]}...'")
+        return False
+    
+    # Step 3: Basic keyword filtering (memory efficient)
     if not quick_keyword_check(message):
-        logger.info(f"No relevant keywords found: '{message[:40]}...'")
+        logger.info(f"❌ KEYWORD CHECK FAILED: '{message[:40]}...'")
         return False
     
-    # NEW: Use Gemini API EARLY for any message that passes basic keyword check
-    # This is now the primary decision maker
-    classification_result = gemini_intent_check(message)
+    # Step 4: Advanced pattern matching (before using AI)
+    # Company job indicators
+    company_indicators = [
+        'we\'re hiring', 'we are hiring', 'hiring:', 'join our team', 'full time',
+        'company', 'intern', 'internship', 'office', 'onsite', 'employee',
+        'only for freshers', 'freshers!', 'candidates with', 'pf esic',
+        'interview depend', 'department', 'on roll job', 'production supervisor'
+    ]
     
-    intent = classification_result.get("intent", "")
-    confidence = classification_result.get("confidence", 0.0)
-    
-    # Immediately reject if Gemini identifies it as service offering
-    if "Freelancer offering" in intent or "offering services" in intent.lower():
-        logger.info(f"❌ GEMINI: FREELANCER OFFER detected: {confidence:.3f} - '{message[:40]}...'")
+    company_score = sum(1 for indicator in company_indicators if indicator in message_lower)
+    if company_score >= 1:
+        logger.info(f"❌ COMPANY JOB DETECTED: '{message[:40]}...'")
         return False
     
-    # Immediately reject if Gemini identifies it as company job
-    if "Company job posting" in intent or "company" in intent.lower():
-        logger.info(f"❌ GEMINI: COMPANY JOB detected: {confidence:.3f} - '{message[:40]}...'")
+    # Freelancer offer indicators
+    freelancer_indicators = [
+        'i am', 'i\'m', 'offering', 'available for', 'portfolio', 
+        'my services', 'hire me', 'contact us', 'we are', 'we provide',
+        'get your', 'just ₹', 'starting from', 'just edited', 'loved working',
+        'kindly share portfolio', 'drop a', 'if you\'re', 'views are awesome'
+    ]
+    
+    freelancer_score = sum(1 for indicator in freelancer_indicators if indicator in message_lower)
+    if freelancer_score >= 1:
+        logger.info(f"❌ FREELANCER OFFER DETECTED: '{message[:40]}...'")
         return False
     
-    # Only accept if Gemini clearly identifies it as client looking to hire
-    is_job_req = (
-        "Client looking to hire" in intent and 
-        confidence > 0.6  # Lower threshold since Gemini is now primary
-    )
+    # Step 5: Positive indicators for genuine job requirements
+    job_requirement_indicators = [
+        'looking for', 'need', 'require', 'seeking', 'wanted',
+        'any ', 'available', 'dm me', 'contact me', 'reach out',
+        'freelance', 'freelancer', 'project'
+    ]
     
-    if is_job_req:
-        logger.info(f"✅ GEMINI: JOB REQUIREMENT detected: {confidence:.3f} - '{message[:40]}...'")
+    job_req_score = sum(1 for indicator in job_requirement_indicators if indicator in message_lower)
+    
+    # If strong positive indicators and no negative ones, accept without AI
+    if job_req_score >= 1 and freelancer_score == 0 and company_score == 0:
+        logger.info(f"✅ PATTERN MATCH: JOB REQUIREMENT: '{message[:40]}...'")
         return True
-    else:
-        logger.info(f"❌ GEMINI: NOT A JOB REQUIREMENT: {intent} ({confidence:.3f}) - '{message[:40]}...'")
-        return False
+    
+    # Step 6: Only use Gemini for borderline cases (memory conservation)
+    try:
+        classification_result = gemini_intent_check(message)
+        intent = classification_result.get("intent", "")
+        confidence = classification_result.get("confidence", 0.0)
+        
+        is_job_req = (
+            "Client looking to hire" in intent and 
+            confidence > 0.7
+        )
+        
+        if is_job_req:
+            logger.info(f"✅ GEMINI FALLBACK: JOB REQUIREMENT: {confidence:.3f} - '{message[:40]}...'")
+            return True
+        else:
+            logger.info(f"❌ GEMINI FALLBACK: NOT JOB REQ: {intent} ({confidence:.3f}) - '{message[:40]}...'")
+            return False
+            
+    except Exception as e:
+        # If Gemini fails (memory issues), fall back to pattern matching
+        logger.warning(f"Gemini failed, using pattern fallback: {e}")
+        return job_req_score >= 1  # More lenient fallback
 
 # Keep the old function name for backward compatibility
 def is_relevant_message(msg: str) -> bool:
