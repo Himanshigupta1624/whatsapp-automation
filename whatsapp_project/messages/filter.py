@@ -322,7 +322,11 @@ def quick_keyword_check(message: str) -> bool:
         'what we offer', 'we offer', 'our services', 'we provide', 'we deliver',
         'fiverr', 'gig', 'dm me to get started', 'contact us for', 'visit our',
         'check out our', 'hire us', 'we specialize', 'we are expert',
-        'explore the gig', 'madeonfiverr', 'our expertise', 'we help you'
+        'explore the gig', 'madeonfiverr', 'our expertise', 'we help you',
+        # VedaTechX specific patterns
+        'you\'re in the right place', 'we merge', 'transform your', 
+        'tailored to your', 'smart erp solutions', 'ancient wisdom',
+        'exceptional solutions', 'empowering your business'
     ]
     
     if any(disq in message_lower for disq in disqualifiers):
@@ -417,7 +421,16 @@ def is_job_requirement(message: str) -> bool:
     message_lower = message.lower()
     
     # Special check for deceptive service offerings that use "looking for" but are actually ads
-    if 'looking for' in message_lower and any(indicator in message_lower for indicator in ['what we offer', 'we offer', 'fiverr', 'gig', 'dm me to get started', 'our services']):
+    deceptive_service_patterns = [
+        'what we offer', 'we offer', 'fiverr', 'gig', 'dm me to get started', 
+        'our services', 'we deliver', 'we provide', 'we specialize', 'we merge',
+        'transform your', 'let us', 'we help you', 'at [company_name]',
+        'explore the gig', 'madeonfiverr', 'you\'re in the right place',
+        'tailored to your', 'smart erp solutions', 'ancient wisdom',
+        'exceptional odoo solutions'
+    ]
+    
+    if 'looking for' in message_lower and any(indicator in message_lower for indicator in deceptive_service_patterns):
         logger.info(f"❌ DECEPTIVE SERVICE OFFERING detected: '{message[:40]}...'")
         return False
     
@@ -441,7 +454,15 @@ def is_job_requirement(message: str) -> bool:
         r'get.*access.*to',
         r'limited.*time.*deal',
         r'unbeatable.*price',
-        r'don\'t miss out'
+        r'don\'t miss out',
+        # Service offering patterns
+        r'what.*we.*offer',
+        r'fiverr\.com',
+        r'explore.*the.*gig',
+        r'dm.*me.*to.*get.*started',
+        r'you\'re.*in.*the.*right.*place',
+        r'we.*merge.*ancient.*wisdom',
+        r'transform.*your.*operations'
     ]
     
     for pattern in immediate_reject_patterns:
