@@ -317,7 +317,12 @@ def quick_keyword_check(message: str) -> bool:
     disqualifiers = [
         'salary', 'in hand', 'hours duty', 'bus canteen', 'mnc company',
         'urgent requirement', 'send resume', 'sir', 'education :', 'male & female',
-        'qualification :', 'immediate hiring', 'steel deal', 'get access'
+        'qualification :', 'immediate hiring', 'steel deal', 'get access',
+        # Service offering patterns
+        'what we offer', 'we offer', 'our services', 'we provide', 'we deliver',
+        'fiverr', 'gig', 'dm me to get started', 'contact us for', 'visit our',
+        'check out our', 'hire us', 'we specialize', 'we are expert',
+        'explore the gig', 'madeonfiverr', 'our expertise', 'we help you'
     ]
     
     if any(disq in message_lower for disq in disqualifiers):
@@ -411,6 +416,11 @@ def is_job_requirement(message: str) -> bool:
     # Pre-filter: Aggressive company job detection
     message_lower = message.lower()
     
+    # Special check for deceptive service offerings that use "looking for" but are actually ads
+    if 'looking for' in message_lower and any(indicator in message_lower for indicator in ['what we offer', 'we offer', 'fiverr', 'gig', 'dm me to get started', 'our services']):
+        logger.info(f"❌ DECEPTIVE SERVICE OFFERING detected: '{message[:40]}...'")
+        return False
+    
     # Immediate rejection patterns - these are never freelance jobs
     immediate_reject_patterns = [
         # Salary range patterns
@@ -492,7 +502,11 @@ def is_job_requirement(message: str) -> bool:
         'get your', 'just ₹', 'starting from', 'dm me for', 'share your portfolio',
         'just edited', 'loved working', 'send profiles', 'drop a', 'if you\'re',
         'kindly share portfolio', 'with relevant projects', 'these kind of',
-        'views are awesome', 'working on it'
+        'views are awesome', 'working on it', 'what we offer', 'we offer',
+        'our services', 'we deliver', 'fiverr', 'gig', 'dm me to get started',
+        'contact us for', 'visit our', 'check out our', 'hire us', 'we specialize',
+        'we are expert', 'explore the gig', 'madeonfiverr', 'our expertise',
+        'we help you', 'we merge', 'let us', 'we transform'
     ]
     
     freelance_job_score = sum(1 for indicator in freelance_job_indicators if indicator in message_lower)
@@ -566,6 +580,7 @@ def test_classifier():
         "Get Your Own Business Portfolio Website for Just ₹1999!",
         "Kindly share portfolio with relevant projects",
         "Drop a 'Interested' if you're the right fit or DM me directly",
+        "VedaTechX Looking for an expert Odoo developer? What We Offer: Custom Odoo Modules DM me to get started!",
         
         # Should be FALSE (Model/Other Requirements)
         "Hair Show Model Requirement – Schwarzkopf Professional Academy Location: Saket",
