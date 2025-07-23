@@ -310,43 +310,34 @@ def preprocess_message(message: str) -> str:
     return message.strip()
 
 def quick_keyword_check(message: str) -> bool:
-    """Quick check for freelance/development keywords - more restrictive"""
+    """Quick check for freelance/development keywords - less restrictive to let Gemini decide"""
     message_lower = message.lower()
     
-    # Immediate disqualifiers - if these exist, it's not a freelance job
-    disqualifiers = [
+    # Only the most obvious disqualifiers that are never freelance jobs
+    hard_disqualifiers = [
         'salary', 'in hand', 'hours duty', 'bus canteen', 'mnc company',
         'urgent requirement', 'send resume', 'sir', 'education :', 'male & female',
-        'qualification :', 'immediate hiring', 'steel deal', 'get access',
-        # Service offering patterns
-        'what we offer', 'we offer', 'our services', 'we provide', 'we deliver',
-        'fiverr', 'gig', 'dm me to get started', 'contact us for', 'visit our',
-        'check out our', 'hire us', 'we specialize', 'we are expert',
-        'explore the gig', 'madeonfiverr', 'our expertise', 'we help you',
-        # VedaTechX specific patterns
-        'you\'re in the right place', 'we merge', 'transform your', 
-        'tailored to your', 'smart erp solutions', 'ancient wisdom',
-        'exceptional solutions', 'empowering your business'
+        'qualification :', 'immediate hiring', 'steel deal'
     ]
     
-    if any(disq in message_lower for disq in disqualifiers):
+    if any(disq in message_lower for disq in hard_disqualifiers):
         return False
     
-    # Must have a hiring intent keyword
+    # Must have a hiring intent keyword OR skill keyword (more permissive)
     hiring_keywords = [
         'looking for', 'need', 'require', 'seeking', 'wanted', 'hire'
     ]
     
-    # Must have a freelance/development skill keyword
     skill_keywords = [
         'developer', 'designer', 'freelancer', 'video editor', 'marketer',
-        'appointment setter', 'content writer', 'programmer', 'coder'
+        'appointment setter', 'content writer', 'programmer', 'coder', 'odoo'
     ]
     
     has_hiring_intent = any(keyword in message_lower for keyword in hiring_keywords)
     has_skill_requirement = any(keyword in message_lower for keyword in skill_keywords)
     
-    return has_hiring_intent and has_skill_requirement
+    # Let more messages through to Gemini for proper analysis
+    return has_hiring_intent or has_skill_requirement
 
 def gemini_intent_check(message: str) -> dict:
     """Use Gemini API to determine message intent"""
@@ -361,19 +352,27 @@ def gemini_intent_check(message: str) -> dict:
         
         # Create prompt for Gemini
         prompt = f"""
-Analyze this message and classify it into one of these categories:
+Analyze this message very carefully and classify it into one of these categories:
 
-1. "Client looking to hire freelancer" - Someone needs/wants to hire a freelancer or developer
-2. "Freelancer offering services" - Someone is offering their freelance services
+1. "Client looking to hire freelancer" - Someone genuinely needs to hire a freelancer/developer for their project
+2. "Freelancer offering services" - Someone is advertising their services, even if they use phrases like "Looking for clients"
 3. "Company job posting" - Company hiring for full-time positions
 4. "General message" - Other types of messages
+
+IMPORTANT: Pay special attention to these red flags that indicate SERVICE OFFERINGS (not job requirements):
+- Mentions of "What we offer", "we provide", "our services"
+- Links to Fiverr, gigs, or portfolios
+- "DM me to get started", "contact us", "hire us"
+- Company names promoting their services
+- Lists of services they provide
+- Marketing language like "transform your business", "tailored solutions"
 
 Message: "{clean_message}"
 
 Respond with only:
 - Category: [exact category name]
 - Confidence: [0.0 to 1.0]
-- Explanation: [brief reason]
+- Explanation: [brief reason focusing on why it's a service offer vs genuine job posting]
 
 Format:
 Category: [category]
@@ -470,102 +469,40 @@ def is_job_requirement(message: str) -> bool:
             logger.info(f"❌ IMMEDIATE REJECT PATTERN detected: '{message[:40]}...'")
             return False
     
-    # Step 1: Quick keyword pre-filter
+    # Step 1: Quick keyword pre-filter (but less restrictive now)
     if not quick_keyword_check(message):
         logger.info(f"No relevant keywords found: '{message[:40]}...'")
         return False
     
-    # Step 1.5: Filter out company job postings (full-time positions)
-    message_lower = message.lower()
-    
-    # Company job indicators (should be filtered out)
-    company_job_indicators = [
-        'we\'re hiring', 'we are hiring', 'hiring:', 'join our team', 'full time',
-        'salary:', 'experience:', 'location:', 'cv to', 'resume to', 'apply to',
-        'company', 'intern', 'internship', 'office', 'onsite', 'employee',
-        'benefits', 'package', 'permanent', 'years must', 'background and',
-        'only for freshers', 'freshers!', 'candidates with', 'mnc company',
-        'urgent requirement', 'in hand', 'hours duty', 'bus canteen', 
-        'pf esic', 'send me resume', 'interview depend', 'male & female',
-        'education :', 'qualification :', 'salary ₹', 'contact :', 'sir',
-        'immediate hiring', 'requirements :', 'eligibility :', 'department',
-        'on roll job', 'production supervisor', 'maintenance department',
-        'store supervisor', 'data entry operator', 'quality department',
-        'mechanical diploma', 'female candidates only', 'minimum 1 year',
-        # Additional patterns from recent spam
-        'salary ', 'to ', 'age limit', 'xerox', 'aadhar card', 'pan card',
-        'marksheet', 'bank passbook', 'passport size photo', 'facilities',
-        'bus route', 'interview time', 'shoes compalsary', 'document',
-        'only/female', 'qualification', 'urgently required', 'post :',
-        'project :', 'experience -', 'payroll company', 'city -', 'area-',
-        'please help to forward', 'steel deal', 'limited time', 'flutterflow',
-        'unbeatable price', 'access to', 'don\'t miss out', 'valuenest',
-        't&c apply', 'get access to', 'no-code', 'drag & drop'
-    ]
-    
-    # Check if it's a company job posting
-    company_score = sum(1 for indicator in company_job_indicators if indicator in message_lower)
-    if company_score >= 1:  # Lower threshold - even 1 indicator is enough
-        logger.info(f"❌ COMPANY JOB POSTING detected: '{message[:40]}...'")
-        return False
-    
-    # Freelance job indicators (what we want)
-    freelance_job_indicators = [
-        'looking for', 'need', 'require', 'seeking', 'wanted',
-        'any ', 'available', 'dm me', 'contact me', 'reach out',
-        'freelance', 'freelancer', 'project', 'gig'
-    ]
-    
-    # Freelancer offer indicators (should be filtered out)
-    freelancer_indicators = [
-        'i am', 'i\'m', 'offering', 'available for', 'portfolio', 
-        'my services', 'hire me', 'contact us', 'we are', 'we provide',
-        'get your', 'just ₹', 'starting from', 'dm me for', 'share your portfolio',
-        'just edited', 'loved working', 'send profiles', 'drop a', 'if you\'re',
-        'kindly share portfolio', 'with relevant projects', 'these kind of',
-        'views are awesome', 'working on it', 'what we offer', 'we offer',
-        'our services', 'we deliver', 'fiverr', 'gig', 'dm me to get started',
-        'contact us for', 'visit our', 'check out our', 'hire us', 'we specialize',
-        'we are expert', 'explore the gig', 'madeonfiverr', 'our expertise',
-        'we help you', 'we merge', 'let us', 'we transform'
-    ]
-    
-    freelance_job_score = sum(1 for indicator in freelance_job_indicators if indicator in message_lower)
-    freelancer_score = sum(1 for indicator in freelancer_indicators if indicator in message_lower)
-    
-    # If clear freelancer offer pattern, filter out
-    if freelancer_score >= 1:  # Lower threshold - even 1 indicator is enough
-        logger.info(f"❌ FREELANCER OFFER detected: '{message[:40]}...'")
-        return False
-    
-    # If clear freelance job requirement pattern, accept
-    if freelance_job_score >= 2 and freelancer_score == 0:
-        logger.info(f"✅ FREELANCE JOB REQUIREMENT detected: '{message[:40]}...'")
-        return True
-    
-    # Step 2: Use Gemini API for borderline cases
+    # NEW: Use Gemini API EARLY for any message that passes basic keyword check
+    # This is now the primary decision maker
     classification_result = gemini_intent_check(message)
     
     intent = classification_result.get("intent", "")
     confidence = classification_result.get("confidence", 0.0)
     
-    # Check if it's a client looking to hire with sufficient confidence
+    # Immediately reject if Gemini identifies it as service offering
+    if "Freelancer offering" in intent or "offering services" in intent.lower():
+        logger.info(f"❌ GEMINI: FREELANCER OFFER detected: {confidence:.3f} - '{message[:40]}...'")
+        return False
+    
+    # Immediately reject if Gemini identifies it as company job
+    if "Company job posting" in intent or "company" in intent.lower():
+        logger.info(f"❌ GEMINI: COMPANY JOB detected: {confidence:.3f} - '{message[:40]}...'")
+        return False
+    
+    # Only accept if Gemini clearly identifies it as client looking to hire
     is_job_req = (
         "Client looking to hire" in intent and 
-        confidence > 0.7  # Higher confidence threshold
+        confidence > 0.6  # Lower threshold since Gemini is now primary
     )
     
     if is_job_req:
-        logger.info(f"✅ JOB REQUIREMENT detected: {confidence:.3f} - '{message[:40]}...'")
+        logger.info(f"✅ GEMINI: JOB REQUIREMENT detected: {confidence:.3f} - '{message[:40]}...'")
+        return True
     else:
-        if "Freelancer offering" in intent:
-            logger.info(f"❌ FREELANCER OFFER detected: {confidence:.3f} - '{message[:40]}...'")
-        elif "Company job posting" in intent:
-            logger.info(f"❌ COMPANY JOB detected: {confidence:.3f} - '{message[:40]}...'")
-        else:
-            logger.info(f"❌ GENERAL MESSAGE: {confidence:.3f} - '{message[:40]}...'")
-    
-    return is_job_req
+        logger.info(f"❌ GEMINI: NOT A JOB REQUIREMENT: {intent} ({confidence:.3f}) - '{message[:40]}...'")
+        return False
 
 # Keep the old function name for backward compatibility
 def is_relevant_message(msg: str) -> bool:
