@@ -2,6 +2,7 @@ import requests
 import logging
 import re
 from decouple import config
+from .memory_monitor import track_memory_usage, log_memory_usage
 
 logger = logging.getLogger(__name__)
 
@@ -28,11 +29,12 @@ def clean_message_for_telegram(text: str) -> str:
     text = re.sub(r'[🚀🌐📍💰🎯📩🏀⚽]+', '', text)
     
     return text.strip()
-
+@track_memory_usage('telegram_requests')
 def send_to_telegram(text: str, sender_info: dict = None):
     """
     Send message to Telegram with only essential information
     """
+    log_memory_usage("Before Telegram request")
     try:
         # Clean the message text to avoid Markdown parsing issues
         clean_text = clean_message_for_telegram(text)
@@ -72,7 +74,7 @@ def send_to_telegram(text: str, sender_info: dict = None):
             data=payload,
             timeout=10
         )
-        
+        log_memory_usage("After Telegram request")
         if response.status_code == 200:
             logger.info(f"Message sent to Telegram successfully")
             return True

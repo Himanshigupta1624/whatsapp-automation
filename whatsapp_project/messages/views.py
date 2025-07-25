@@ -4,15 +4,17 @@ from rest_framework.decorators import api_view
 from .models import MessageLog
 from .filter import is_relevant_message
 from .telegram import send_to_telegram
+from .memory_monitor import memory_monitor, track_memory_usage, log_memory_usage
 import logging
 import datetime
 
 logger = logging.getLogger(__name__)
 
 @api_view(["POST"])
+@track_memory_usage('message_processing')
 def whatsapp_webhook(request):
     try:
-        
+        log_memory_usage("Webhook processing start")
         webhook_data = request.data
         event_type = webhook_data.get('data', {}).get('event', '')
         
@@ -55,14 +57,16 @@ def whatsapp_webhook(request):
                 
                 # Process the message if we found text
                 if message_text.strip():
+                    log_memory_usage(f"Before filtering message: {message_text[:30]}...")
                     is_relevant = is_relevant_message(message_text)
                     
                     # Create simple log entry
-                    message_log = MessageLog.objects.create(
-                        raw_text=message_text,
-                        is_relevant=is_relevant,
-                        forwarded_to_telegram=False
-                    )
+                    with track_memory_usage('database_operations'):
+                        message_log = MessageLog.objects.create(
+                            raw_text=message_text,
+                            is_relevant=is_relevant,
+                            forwarded_to_telegram=False
+                        )
                     
                     # Send to Telegram if relevant
                     if is_relevant:
@@ -75,11 +79,12 @@ def whatsapp_webhook(request):
                                 logger.info(f"Opportunity forwarded: {message_text[:50]}...")
                         except Exception as e:
                             logger.error(f"Failed to send to Telegram: {e}")
-        
+        log_memory_usage("Webhook processing end")
         return Response({"status": "received"})
         
     except Exception as e:
         logger.error(f"Error processing webhook: {e}")
+        log_memory_usage("Webhook processing error")
         return Response({"status": "error", "message": str(e)})
 
 

@@ -230,6 +230,7 @@
 import re
 import logging
 import os
+from .memory_monitor import memory_monitor, track_memory_usage, log_memory_usage
 
 # Try to import Google Generative AI, but handle gracefully if not available
 try:
@@ -293,16 +294,18 @@ def configure_gemini():
 
 # Initialize Gemini model with memory conservation
 _gemini_model = None
-
+@track_memory_usage('gemini_model')
 def get_gemini_model():
     """Get Gemini model instance - memory conservative"""
     global _gemini_model
     if _gemini_model is None:
+        log_memory_usage("Before Gemini model loading")
         try:
             if configure_gemini():
                 import google.generativeai as genai_import
                 _gemini_model = genai_import.GenerativeModel('gemini-1.5-flash')
                 logger.info("Gemini model available for complex cases")
+                log_memory_usage("After Gemini model loading")
             else:
                 _gemini_model = False
                 logger.info("Using pattern-only classification (memory efficient)")
@@ -321,7 +324,7 @@ def preprocess_message(message: str) -> str:
     # Remove forwarded signatures
     message = re.sub(r'forwarded as received\.?', '', message, flags=re.IGNORECASE)
     return message.strip()
-
+@track_memory_usage('pattern_matching')
 def quick_keyword_check(message: str) -> bool:
     """Quick check for freelance/development keywords - memory efficient"""
     message_lower = message.lower()
@@ -359,6 +362,7 @@ def quick_keyword_check(message: str) -> bool:
     
     return has_hiring_intent and has_skill_requirement
 
+@track_memory_usage('gemini_model')
 def gemini_intent_check(message: str) -> dict:
     """Use Gemini API to determine message intent"""
     try:
@@ -430,6 +434,7 @@ Explanation: [reason]
         logger.error(f"Gemini classification failed: {e}")
         return {"intent": "unknown", "confidence": 0.0}
 
+@track_memory_usage('message_processing')
 def is_job_requirement(message: str) -> bool:
     """
     Memory-efficient job requirement checker
