@@ -89,4 +89,167 @@ def whatsapp_webhook(request):
         log_memory_usage("Webhook processing error")
         return Response({"status": "error", "message": str(e)})
 
+@api_view(["GET"])
+def memory_stats(request):
+    """Endpoint to get current memory statistics"""
+    try:
+        import psutil
+        import gc
+        
+        process = psutil.Process()
+        system_memory = psutil.virtual_memory()
+        
+        stats = {
+            "system": {
+                "total_gb": round(system_memory.total / 1024**3, 2),
+                "used_gb": round(system_memory.used / 1024**3, 2),
+                "available_gb": round(system_memory.available / 1024**3, 2),
+                "percentage": system_memory.percent
+            },
+            "process": {
+                "rss_mb": round(process.memory_info().rss / 1024**2, 2),
+                "vms_mb": round(process.memory_info().vms / 1024**2, 2),
+                "cpu_percent": process.cpu_percent(),
+                "num_threads": process.num_threads()
+            },
+            "python": {
+                "objects_count": len(gc.get_objects()),
+                "garbage_count": len(gc.garbage)
+            },
+            "component_memory": memory_monitor.get_component_memory_summary()
+        }
+        
+        # Get monitoring history if available
+        monitor_stats = memory_monitor.get_component_memory_summary()
+        if monitor_stats:
+            stats["component_tracking"] = monitor_stats
+        
+        return Response(stats)
+        
+    except Exception as e:
+        logger.error(f"Error getting memory stats: {e}")
+        return Response({"error": str(e)}, status=500)
 
+@api_view(["POST"]) 
+def test_memory_usage(request):
+    """Test endpoint to trigger memory usage for testing"""
+    try:
+        from .filter import is_job_requirement, quick_keyword_check
+        
+        # Get test message from request
+        test_message = request.data.get('message', 'Looking for a React developer for my project')
+        
+        log_memory_usage("Test message processing start")
+        
+        # Test pattern matching
+        keyword_result = quick_keyword_check(test_message)
+        
+        # Test full processing  
+        job_result = is_job_requirement(test_message)
+        
+        # Test database operation
+        message_log = MessageLog.objects.create(
+            raw_text=test_message,
+            is_relevant=job_result,
+            forwarded_to_telegram=False
+        )
+        
+        log_memory_usage("Test message processing end")
+        
+        return Response({
+            "message": test_message,
+            "keyword_check": keyword_result,
+            "job_requirement": job_result,
+            "memory_report": memory_monitor.get_memory_report(),
+            "component_memory": memory_monitor.get_component_memory_summary()
+        })
+        
+    except Exception as e:
+        logger.error(f"Error in memory test: {e}")
+        return Response({"error": str(e)}, status=500)
+
+@api_view(["GET"])
+def memory_stats(request):
+    """Endpoint to get current memory statistics"""
+    try:
+        import psutil
+        import gc
+        process = psutil.Process()
+        system_memory = psutil.virtual_memory()
+        
+        stats = {
+            "system": {
+                "total_gb": round(system_memory.total / 1024**3, 2),
+                "used_gb": round(system_memory.used / 1024**3, 2),
+                "available_gb": round(system_memory.available / 1024**3, 2),
+                "percentage": system_memory.percent
+            },
+            "process": {
+                "rss_mb": round(process.memory_info().rss / 1024**2, 2),
+                "vms_mb": round(process.memory_info().vms / 1024**2, 2),
+                "cpu_percent": process.cpu_percent(),
+                "num_threads": process.num_threads()
+            },
+            "python": {
+                "objects_count": len(gc.get_objects()),
+                "garbage_count": len(gc.garbage)
+            }
+        }
+        
+        # Get monitoring history if available
+        monitor_stats = memory_monitor.get_component_memory_summary()
+        if monitor_stats:
+            stats["components"] = monitor_stats
+        
+        return Response(stats)
+        
+    except Exception as e:
+        logger.error(f"Error getting memory stats: {e}")
+        return Response({"error": str(e)}, status=500)
+
+@api_view(["POST"])
+def test_memory_components(request):
+    """Test endpoint to trigger memory usage in different components"""
+    try:
+        from .filter import is_relevant_message
+        from .telegram import send_simple_message
+        import time
+        
+        log_memory_usage("Starting memory component test")
+        
+        # Test message processing
+        test_message = "Looking for a web developer for my project. Need someone experienced with React and Node.js"
+        
+        # Simulate processing
+        for i in range(5):
+            log_memory_usage(f"Test iteration {i+1}")
+            
+            # Test pattern matching
+            with track_memory_usage('pattern_matching'):
+                result = is_relevant_message(test_message)
+            
+            # Test database operations
+            with track_memory_usage('database_operations'):
+                message_log = MessageLog.objects.create(
+                    raw_text=f"Test message {i+1}: {test_message}",
+                    is_relevant=result,
+                    forwarded_to_telegram=False
+                )
+            
+            # Small delay to see memory changes
+            time.sleep(0.1)
+        
+        log_memory_usage("Memory component test completed")
+        
+        # Get updated component summary
+        component_summary = memory_monitor.get_component_memory_summary()
+        
+        return Response({
+            "status": "test_completed",
+            "component_memory": component_summary,
+            "message": "Memory component test completed successfully"
+        })
+        
+    except Exception as e:
+        logger.error(f"Error in memory component test: {e}")
+        return Response({"status": "error", "message": str(e)}, status=500)

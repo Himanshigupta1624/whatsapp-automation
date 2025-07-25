@@ -9,6 +9,7 @@ from datetime import datetime
 from typing import Dict, Any, Optional
 import json
 from functools import wraps
+from contextlib import contextmanager
 
 logger = logging.getLogger(__name__)
 
@@ -112,17 +113,34 @@ class MemoryMonitor:
         """Track memory usage for specific components"""
         if component in self.component_memory:
             self.component_memory[component] += memory_delta
+            # Log even small memory changes with better precision
+            memory_mb = memory_delta / 1024 / 1024
+            if abs(memory_mb) > 0.001:  # Show changes > 1KB  
+                logger.info(f"[MEMORY] {component}: {memory_mb:+.3f}MB")
+            else:
+                logger.debug(f"[MEMORY] {component}: {memory_delta:+.0f} bytes")
     
     def get_component_memory_summary(self) -> Dict[str, float]:
         """Get memory usage summary by component"""
-        total_tracked = sum(self.component_memory.values())
+        total_tracked = sum(abs(mem) for mem in self.component_memory.values())
         
         summary = {}
         for component, memory in self.component_memory.items():
-            summary[component] = {
-                'mb': round(memory / 1024 / 1024, 2),
-                'percent': round((memory / total_tracked * 100) if total_tracked > 0 else 0, 2)
-            }
+            # Show more precision for small values
+            mb_value = memory / 1024 / 1024
+            if abs(mb_value) < 0.01:  # Less than 10KB
+                kb_value = memory / 1024
+                summary[component] = {
+                    'mb': round(mb_value, 4),
+                    'kb': round(kb_value, 2),
+                    'bytes': int(memory),
+                    'percent': round((abs(memory) / total_tracked * 100) if total_tracked > 0 else 0, 2)
+                }
+            else:
+                summary[component] = {
+                    'mb': round(mb_value, 3),
+                    'percent': round((abs(memory) / total_tracked * 100) if total_tracked > 0 else 0, 2)
+                }
         
         return summary
     
@@ -199,62 +217,41 @@ class MemoryMonitor:
         snapshot = self.memory_snapshot()
         
         report = f"""
-🧠 MEMORY MONITORING REPORT
+MEMORY MONITORING REPORT
 {'='*50}
 Timestamp: {snapshot['timestamp']}
 Uptime: {snapshot['uptime_seconds']} seconds
 
-📊 PROCESS MEMORY:
+PROCESS MEMORY:
 - RSS: {snapshot['system_memory']['process_memory']['rss_mb']} MB
 - VMS: {snapshot['system_memory']['process_memory']['vms_mb']} MB
 - Peak: {snapshot['system_memory']['process_memory']['peak_mb']} MB
 - CPU %: {snapshot['system_memory']['process_memory']['percent']}%
 
-💻 SYSTEM MEMORY:
+SYSTEM MEMORY:
 - Total: {snapshot['system_memory']['system_memory']['total_mb']} MB
 - Available: {snapshot['system_memory']['system_memory']['available_mb']} MB
 - Used: {snapshot['system_memory']['system_memory']['used_percent']}%
 
-🐍 PYTHON MEMORY:
+PYTHON MEMORY:
 - Current: {snapshot['python_memory']['current_mb']} MB
 - Peak: {snapshot['python_memory']['peak_mb']} MB
 
-📦 COMPONENT MEMORY:
+COMPONENT MEMORY:
 """
         
         for component, stats in snapshot['component_memory'].items():
-            report += f"- {component}: {stats['mb']} MB ({stats['percent']}%)\n"
+            if 'kb' in stats:  # Small value, show KB
+                report += f"- {component}: {stats['kb']} KB ({stats['bytes']} bytes) ({stats['percent']}%)\n"
+            elif stats['mb'] != 0.0:  # Show non-zero MB values
+                report += f"- {component}: {stats['mb']} MB ({stats['percent']}%)\n"
+            else:
+                report += f"- {component}: 0 MB (0%)\n"
         
         return report
 
 # Global memory monitor instance
 memory_monitor = MemoryMonitor()
-
-def track_memory_usage(component: str):
-    """Decorator to track memory usage of functions"""
-    def decorator(func):
-        @wraps(func)
-        def wrapper(*args, **kwargs):
-            # Take memory snapshot before
-            before_memory = memory_monitor.process.memory_info().rss
-            
-            try:
-                result = func(*args, **kwargs)
-                return result
-            finally:
-                # Calculate memory delta
-                after_memory = memory_monitor.process.memory_info().rss
-                memory_delta = after_memory - before_memory
-                
-                # Track component memory usage
-                memory_monitor.track_component_memory(component, memory_delta)
-                
-                # Log significant memory increases
-                if memory_delta > 10 * 1024 * 1024:  # 10MB threshold
-                    logger.warning(f"{component} used {memory_delta / 1024 / 1024:.2f}MB")
-        
-        return wrapper
-    return decorator
 
 def log_memory_usage(message: str = "Memory usage"):
     """Log current memory usage"""
@@ -264,3 +261,27 @@ def log_memory_usage(message: str = "Memory usage"):
         logger.info(f"{message}: {process_memory['rss_mb']}MB RSS, {process_memory['percent']}% CPU")
     except Exception as e:
         logger.error(f"Failed to log memory usage: {e}")
+
+class track_memory_usage:
+    """Context manager and decorator to track memory usage of functions/blocks"""
+    
+    def __init__(self, component: str):
+        self.component = component
+        self.before_memory = 0
+        
+    def __enter__(self):
+        self.before_memory = memory_monitor.process.memory_info().rss
+        return self
+        
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        after_memory = memory_monitor.process.memory_info().rss
+        memory_delta = after_memory - self.before_memory
+        memory_monitor.track_component_memory(self.component, memory_delta)
+        
+    def __call__(self, func):
+        """Use as decorator"""
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            with self:
+                return func(*args, **kwargs)
+        return wrapper

@@ -166,11 +166,20 @@ LOGGING = {
             'level': 'INFO',
             'propagate': True,
         },
-     'memory_monitor': {
+        'memory_monitor': {
             'handlers': ['file', 'console'],
             'level': 'INFO',
             'propagate': True,
-        },   
-        
+        },
+        'messages.filter': {
+            'handlers': ['file', 'console'],
+            'level': 'INFO',
+            'propagate': True,
+        },
+        'messages.telegram': {
+            'handlers': ['file', 'console'],
+            'level': 'INFO',
+            'propagate': True,
+        },
     },
 }

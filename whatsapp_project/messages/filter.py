@@ -1,8 +1,30 @@
-# from transformers import pipeline
-# import re
-# import logging
+import re
+import logging
+import os
 
-# logger = logging.getLogger(__name__)
+# Try to import Google Generative AI, but handle gracefully if not available
+try:
+    import google.generativeai as genai
+    GEMINI_AVAILABLE = True
+except ImportError:
+    GEMINI_AVAILABLE = False
+    genai = None
+
+# Import memory monitoring
+try:
+    from .memory_monitor import track_memory_usage, log_memory_usage, track_memory_context
+except ImportError:
+    # Fallback if memory_monitor is not available
+    def track_memory_usage(component):
+        def decorator(func):
+            return func
+        return decorator
+    def log_memory_usage(message):
+        pass
+    from contextlib import nullcontext
+    track_memory_context = lambda x: nullcontext()
+
+logger = logging.getLogger(__name__)
 
 # FREELANCE_KEYWORDS = [
 #     # Core development terms
@@ -294,9 +316,10 @@ def configure_gemini():
 
 # Initialize Gemini model with memory conservation
 _gemini_model = None
+
 @track_memory_usage('gemini_model')
 def get_gemini_model():
-    """Get Gemini model instance - memory conservative"""
+    """Get Gemini model instance - memory conservative with monitoring"""
     global _gemini_model
     if _gemini_model is None:
         log_memory_usage("Before Gemini model loading")
@@ -324,6 +347,7 @@ def preprocess_message(message: str) -> str:
     # Remove forwarded signatures
     message = re.sub(r'forwarded as received\.?', '', message, flags=re.IGNORECASE)
     return message.strip()
+
 @track_memory_usage('pattern_matching')
 def quick_keyword_check(message: str) -> bool:
     """Quick check for freelance/development keywords - memory efficient"""
@@ -470,7 +494,7 @@ def is_job_requirement(message: str) -> bool:
     
     for pattern in immediate_reject_patterns:
         if re.search(pattern, message_lower):
-            logger.info(f"❌ REGEX PATTERN REJECT: '{message[:40]}...'")
+            logger.info(f"[REJECT] REGEX PATTERN: '{message[:40]}...'")
             return False
     
     # Step 2: Deceptive service offerings check
@@ -482,12 +506,12 @@ def is_job_requirement(message: str) -> bool:
     ]
     
     if 'looking for' in message_lower and any(pattern in message_lower for pattern in deceptive_patterns):
-        logger.info(f"❌ DECEPTIVE SERVICE OFFERING: '{message[:40]}...'")
+        logger.info(f"[REJECT] DECEPTIVE SERVICE OFFERING: '{message[:40]}...'")
         return False
     
     # Step 3: Basic keyword filtering (memory efficient)
     if not quick_keyword_check(message):
-        logger.info(f"❌ KEYWORD CHECK FAILED: '{message[:40]}...'")
+        logger.info(f"[REJECT] KEYWORD CHECK FAILED: '{message[:40]}...'")
         return False
     
     # Step 4: Advanced pattern matching (before using AI)
@@ -501,7 +525,7 @@ def is_job_requirement(message: str) -> bool:
     
     company_score = sum(1 for indicator in company_indicators if indicator in message_lower)
     if company_score >= 1:
-        logger.info(f"❌ COMPANY JOB DETECTED: '{message[:40]}...'")
+        logger.info(f"[REJECT] COMPANY JOB DETECTED: '{message[:40]}...'")
         return False
     
     # Freelancer offer indicators
@@ -514,7 +538,7 @@ def is_job_requirement(message: str) -> bool:
     
     freelancer_score = sum(1 for indicator in freelancer_indicators if indicator in message_lower)
     if freelancer_score >= 1:
-        logger.info(f"❌ FREELANCER OFFER DETECTED: '{message[:40]}...'")
+        logger.info(f"[REJECT] FREELANCER OFFER DETECTED: '{message[:40]}...'")
         return False
     
     # Step 5: Positive indicators for genuine job requirements
@@ -528,7 +552,7 @@ def is_job_requirement(message: str) -> bool:
     
     # If strong positive indicators and no negative ones, accept without AI
     if job_req_score >= 1 and freelancer_score == 0 and company_score == 0:
-        logger.info(f"✅ PATTERN MATCH: JOB REQUIREMENT: '{message[:40]}...'")
+        logger.info(f"[ACCEPT] PATTERN MATCH: JOB REQUIREMENT: '{message[:40]}...'")
         return True
     
     # Step 6: Only use Gemini for borderline cases (memory conservation)
@@ -543,10 +567,10 @@ def is_job_requirement(message: str) -> bool:
         )
         
         if is_job_req:
-            logger.info(f"✅ GEMINI FALLBACK: JOB REQUIREMENT: {confidence:.3f} - '{message[:40]}...'")
+            logger.info(f"[ACCEPT] GEMINI FALLBACK: JOB REQUIREMENT: {confidence:.3f} - '{message[:40]}...'")
             return True
         else:
-            logger.info(f"❌ GEMINI FALLBACK: NOT JOB REQ: {intent} ({confidence:.3f}) - '{message[:40]}...'")
+            logger.info(f"[REJECT] GEMINI FALLBACK: NOT JOB REQ: {intent} ({confidence:.3f}) - '{message[:40]}...'")
             return False
             
     except Exception as e:

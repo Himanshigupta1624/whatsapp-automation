@@ -16,9 +16,11 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path
-from messages.views import whatsapp_webhook
+from messages.views import whatsapp_webhook, memory_stats, test_memory_usage
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('api/whatsapp/webhook/',whatsapp_webhook),
+    path('api/whatsapp/webhook/', whatsapp_webhook),
+    path('api/memory/stats/', memory_stats),
+    path('api/memory/test/', test_memory_usage),
 ]
