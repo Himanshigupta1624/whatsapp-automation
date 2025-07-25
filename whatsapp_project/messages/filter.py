@@ -119,7 +119,8 @@ def quick_keyword_check(message: str) -> bool:
     hiring_keywords = [
         'looking for', 'need', 'require', 'seeking', 'wanted', 'hire', 'hiring',
         'any ', 'available', 'dm me', 'contact me', 'reach out', 'freelance', 
-        'freelancer', 'project', 'build', 'create', 'develop'
+        'freelancer', 'project', 'build', 'create', 'develop', 'need to',
+        'need to build', 'need to create', 'need to develop'
     ]
 
     # Expanded skill keywords (include all the original comprehensive list)
