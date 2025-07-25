@@ -61,12 +61,14 @@ def whatsapp_webhook(request):
                     is_relevant = is_relevant_message(message_text)
                     
                     # Create simple log entry
-                    with track_memory_usage('database_operations'):
-                        message_log = MessageLog.objects.create(
+                    before_db = memory_monitor.process.memory_info().rss
+                    message_log = MessageLog.objects.create(
                             raw_text=message_text,
                             is_relevant=is_relevant,
                             forwarded_to_telegram=False
                         )
+                    after_db = memory_monitor.process.memory_info().rss
+                    memory_monitor.track_component_memory('database_operations', after_db - before_db)
                     
                     # Send to Telegram if relevant
                     if is_relevant:
