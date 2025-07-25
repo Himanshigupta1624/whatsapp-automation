@@ -50,7 +50,6 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
-    'messages.middleware.MemoryMonitoringMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -138,13 +137,6 @@ STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-MEMORY_MONITORING = {
-    'ENABLE_CONTINUOUS_MONITORING': True,
-    'MONITORING_INTERVAL': 30,  # seconds
-    'MEMORY_ALERT_THRESHOLD': 500,  # MB
-    'LOG_MEMORY_USAGE': True
-}
-
 # Add this to your settings.py
 LOGGING = {
     'version': 1,
@@ -166,17 +158,7 @@ LOGGING = {
             'level': 'INFO',
             'propagate': True,
         },
-        'memory_monitor': {
-            'handlers': ['file', 'console'],
-            'level': 'INFO',
-            'propagate': True,
-        },
         'messages.filter': {
-            'handlers': ['file', 'console'],
-            'level': 'INFO',
-            'propagate': True,
-        },
-        'messages.telegram': {
             'handlers': ['file', 'console'],
             'level': 'INFO',
             'propagate': True,
