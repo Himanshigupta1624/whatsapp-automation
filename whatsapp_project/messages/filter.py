@@ -115,14 +115,35 @@ def quick_keyword_check(message: str) -> bool:
     if any(disq in message_lower for disq in hard_disqualifiers):
         return False
 
-    # Must have hiring intent AND skill requirement (more restrictive)
+    # Expanded hiring intent keywords (more inclusive)
     hiring_keywords = [
-        'looking for', 'need', 'require', 'seeking', 'wanted', 'hire'
+        'looking for', 'need', 'require', 'seeking', 'wanted', 'hire', 'hiring',
+        'any ', 'available', 'dm me', 'contact me', 'reach out', 'freelance', 
+        'freelancer', 'project', 'build', 'create', 'develop'
     ]
 
+    # Expanded skill keywords (include all the original comprehensive list)
     skill_keywords = [
         'developer', 'designer', 'freelancer', 'video editor', 'marketer',
-        'appointment setter', 'content writer', 'programmer', 'coder'
+        'appointment setter', 'content writer', 'programmer', 'coder',
+        # Add back the comprehensive list
+        'web developer', 'website developer', 'frontend developer', 'backend developer',
+        'full stack developer', 'web designer', 'ui developer', 'ux developer',
+        'app developer', 'mobile developer', 'flutter developer', 'react developer',
+        'wordpress developer', 'shopify developer', 'mern stack', 'mean stack',
+        'graphic designer', 'ui designer', 'ux designer', 'poster designer',
+        'logo designer', 'brand designer', 'figma designer', 'video editor',
+        'photographer', 'videographer', 'content creator', 'animator',
+        'digital marketer', 'social media marketer', 'seo expert', 'content writer',
+        'copywriter', 'lead generator', 'ads manager', 'marketing specialist',
+        'data scientist', 'ai developer', 'ml engineer', 'blockchain developer',
+        'c++ developer', 'python developer', 'java developer', 'software tester',
+        'qa engineer', 'devops engineer', 'database developer',
+        'website development', 'web development', 'app development', 'logo design',
+        'website design', 'mobile app', 'e-commerce', 'portfolio site',
+        'business website', 'landing page', 'automation', 'chatbot', 'site', 'website',
+        # Special patterns for Shopify
+        'shopify', 'shopify website', 'shopify site', 'shopify store'
     ]
 
     has_hiring_intent = any(keyword in message_lower for keyword in hiring_keywords)
@@ -337,6 +358,8 @@ def test_classifier():
         "Any Figma designers freelancers kindly DM me",
         "Hi looking for a video editor to edit AI videos",
         "Hey guys, I am looking for experienced appointment setters for my agency",
+        "Any freelance Shopify Website developer available? DM me",
+        "Hi\n\nAny freelance Shopify Website developer available?\n\nDM me, I will share the contact person\n#Hiring\n\nNeed to build a Shopify site similar to this.",
 
         # Should be FALSE (Recent Company Job Postings)
         "Urgent requirement • MNC COMPANY • Male & female Education 10th 12th ITI salary 15000 TO 17,000",
@@ -361,7 +384,7 @@ def test_classifier():
         "We need 5 Female Models for a 2-Day Hair Show Send profiles ASAP!"
     ]
 
-    print("🧪 Testing Ultra-Restrictive Gemini API Classifier:")
+    print("🧪 Testing Classifier with Shopify Messages:")
     print("=" * 60)
 
     for i, message in enumerate(test_messages, 1):
