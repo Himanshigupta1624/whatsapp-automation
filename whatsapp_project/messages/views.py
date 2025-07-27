@@ -11,8 +11,8 @@ import datetime
 
 logger = logging.getLogger(__name__)
 
-@api_view(["POST", "GET"])
 @csrf_exempt
+@api_view(["POST", "GET"])
 def whatsapp_webhook(request):
     # Handle GET requests for testing
     if request.method == "GET":
