@@ -1,6 +1,5 @@
 from django.shortcuts import render
-from rest_framework.response import Response
-from rest_framework.decorators import api_view
+from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
 from .models import MessageLog
@@ -8,10 +7,10 @@ from .filter import is_relevant_message
 from .telegram import send_to_telegram
 import logging
 import datetime
+import json
 
 logger = logging.getLogger(__name__)
 
-@api_view(["POST", "GET"])
 @csrf_exempt
 def whatsapp_webhook(request):
     # Debug logging for method
@@ -20,7 +19,7 @@ def whatsapp_webhook(request):
     # Handle GET requests for testing
     if request.method == "GET":
         logger.info("Processing GET request on webhook endpoint")
-        return Response({
+        return JsonResponse({
             "status": "webhook_active", 
             "message": "WhatsApp webhook is running",
             "timestamp": str(datetime.datetime.now()),
@@ -28,18 +27,24 @@ def whatsapp_webhook(request):
         })
     
     # Handle POST requests (actual webhooks)
-    if request.method == "POST":
+    elif request.method == "POST":
         # Log ALL incoming requests for debugging
         logger.info("=" * 50)
         logger.info("WEBHOOK POST REQUEST RECEIVED")
         logger.info(f"Method: {request.method}")
         logger.info(f"Headers: {dict(request.headers)}")
         logger.info(f"Raw Data: {request.body}")
-        logger.info(f"Parsed Data: {request.data}")
         logger.info("=" * 50)
         
         try:
-            webhook_data = request.data
+            # Parse JSON data
+            if request.body:
+                webhook_data = json.loads(request.body)
+            else:
+                webhook_data = {}
+            
+            logger.info(f"Parsed Data: {webhook_data}")
+            
             event_type = webhook_data.get('data', {}).get('event', '')
 
             if event_type == 'messages.upsert':
@@ -101,11 +106,12 @@ def whatsapp_webhook(request):
                             except Exception as e:
                                 logger.error(f"Failed to send to Telegram: {e}")
             
-            return Response({"status": "received"})
+            return JsonResponse({"status": "received"})
 
         except Exception as e:
             logger.error(f"Error processing webhook: {e}")
-            return Response({"status": "error", "message": str(e)})
+            return JsonResponse({"status": "error", "message": str(e)})
     
-    # If neither GET nor POST (shouldn't happen)
-    return Response({"status": "error", "message": "Unsupported method"})
+    # If neither GET nor POST
+    else:
+        return JsonResponse({"status": "error", "message": "Method not allowed"}, status=405)
