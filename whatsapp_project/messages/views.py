@@ -11,26 +11,32 @@ import datetime
 
 logger = logging.getLogger(__name__)
 
-@csrf_exempt
 @api_view(["POST", "GET"])
+@csrf_exempt
 def whatsapp_webhook(request):
+    # Debug logging for method
+    logger.info(f"Received {request.method} request on webhook endpoint")
+    
     # Handle GET requests for testing
     if request.method == "GET":
-        logger.info("GET request received on webhook endpoint")
+        logger.info("Processing GET request on webhook endpoint")
         return Response({
             "status": "webhook_active", 
             "message": "WhatsApp webhook is running",
-            "timestamp": str(datetime.datetime.now())
+            "timestamp": str(datetime.datetime.now()),
+            "method": "GET"
         })
     
-    # Log ALL incoming requests for debugging
-    logger.info("=" * 50)
-    logger.info("WEBHOOK REQUEST RECEIVED")
-    logger.info(f"Method: {request.method}")
-    logger.info(f"Headers: {dict(request.headers)}")
-    logger.info(f"Raw Data: {request.body}")
-    logger.info(f"Parsed Data: {request.data}")
-    logger.info("=" * 50)
+    # Handle POST requests (actual webhooks)
+    if request.method == "POST":
+        # Log ALL incoming requests for debugging
+        logger.info("=" * 50)
+        logger.info("WEBHOOK POST REQUEST RECEIVED")
+        logger.info(f"Method: {request.method}")
+        logger.info(f"Headers: {dict(request.headers)}")
+        logger.info(f"Raw Data: {request.body}")
+        logger.info(f"Parsed Data: {request.data}")
+        logger.info("=" * 50)
     
     try:
         
