@@ -1,6 +1,8 @@
 from django.shortcuts import render
 from rest_framework.response import Response
 from rest_framework.decorators import api_view
+from django.views.decorators.csrf import csrf_exempt
+from django.utils.decorators import method_decorator
 from .models import MessageLog
 from .filter import is_relevant_message
 from .telegram import send_to_telegram
@@ -9,9 +11,27 @@ import datetime
 
 logger = logging.getLogger(__name__)
 
-@api_view(["POST"])
-
+@api_view(["POST", "GET"])
+@csrf_exempt
 def whatsapp_webhook(request):
+    # Handle GET requests for testing
+    if request.method == "GET":
+        logger.info("GET request received on webhook endpoint")
+        return Response({
+            "status": "webhook_active", 
+            "message": "WhatsApp webhook is running",
+            "timestamp": str(datetime.datetime.now())
+        })
+    
+    # Log ALL incoming requests for debugging
+    logger.info("=" * 50)
+    logger.info("WEBHOOK REQUEST RECEIVED")
+    logger.info(f"Method: {request.method}")
+    logger.info(f"Headers: {dict(request.headers)}")
+    logger.info(f"Raw Data: {request.body}")
+    logger.info(f"Parsed Data: {request.data}")
+    logger.info("=" * 50)
+    
     try:
         
         webhook_data = request.data
